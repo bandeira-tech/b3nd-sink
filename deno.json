@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "description": "B3nd egress layer: integrations with external services (LLM, messaging, email, payments, calendar). Early exploration; sinks are built case by case.",
   "exports": {
-    "./resend": "./src/resend/mod.ts"
+    "./resend": "./src/resend/mod.ts",
+    "./whatsapp": "./src/whatsapp/mod.ts"
   },
   "exclude": [".claude/"],
   "tasks": {
