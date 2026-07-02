@@ -14,6 +14,8 @@ on top.
 | ------ | -------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `GET`  | `/healthz`                 | Returns `sink.status()` — the mount manifest (basePath, schema patterns).                                  |
 | `GET`  | `/smoke[?to=+E164]`        | Sends the `hello_world` template to `to` (or `WA_TO_DEFAULT`). Returns the `ReceiveResult` as JSON.        |
+| `GET`  | `/whatsapp`                | Meta webhook GET handshake — verifies `hub.verify_token` and echoes back `hub.challenge`.                  |
+| `POST` | `/whatsapp`                | Meta webhook POST — HMAC-verifies the signature, decodes the payload, dispatches inbound tuples.           |
 | `*`    | other                      | 404 with a small route listing.                                                                            |
 
 ## Bindings
@@ -25,8 +27,10 @@ Set via wrangler vars (non-sensitive) and wrangler secrets (sensitive).
 | `WA_PHONE_NUMBER_ID`  | var    | yes      | Meta phone-number-id used as the API path segment.                          |
 | `WA_TO_DEFAULT`       | var    | no       | Default recipient for `/smoke` when no `?to=` is given.                     |
 | `WA_ACCESS_TOKEN`     | secret | yes      | Graph API token. 24h temporary tokens work; rotate via `secret put`.        |
-| `WA_APP_SECRET`       | secret | no       | Needed once webhook routes land (M3).                                       |
-| `WA_VERIFY_TOKEN`     | secret | no       | Needed once webhook routes land (M3).                                       |
+| `WA_APP_SECRET`       | secret | yes*     | Required for `POST /whatsapp` — HMAC signature verification.                |
+| `WA_VERIFY_TOKEN`     | secret | yes*     | Required for `GET /whatsapp` — Meta webhook handshake.                      |
+
+\* Required if you use the `/whatsapp` webhook routes. Without them, GET/POST `/whatsapp` return 500.
 
 ## Deploy
 
@@ -43,10 +47,15 @@ npx wrangler deploy \
   --var "WA_PHONE_NUMBER_ID:<phone-number-id>" \
   --var "WA_TO_DEFAULT:+<E164>"
 
-# Then add the secret. wrangler prompts interactively; pipe it to
-# automate.
+# Then add the secrets. wrangler prompts interactively; pipe to automate.
 echo "<fresh-access-token>" | \
   npx wrangler secret put WA_ACCESS_TOKEN --config worker/wrangler.toml
+
+# Add webhook secrets (required for GET/POST /whatsapp):
+echo "<app-secret>" | \
+  npx wrangler secret put WA_APP_SECRET --config worker/wrangler.toml
+echo "<verify-token>" | \
+  npx wrangler secret put WA_VERIFY_TOKEN --config worker/wrangler.toml
 
 # Verify:
 curl https://whatsapp-rig.<account>.workers.dev/healthz
@@ -87,8 +96,6 @@ inside the Worker resolves `@bandeira-tech/b3nd-core` through the same
   `receive` directly. No rig, no observers, no storage. Add when M3's
   move-side webhook transport lands and we have inbound traffic worth
   routing.
-- **Webhook ingress.** `/whatsapp/webhook` routes (GET handshake + POST
-  with signature verify) live in M3.
 - **Per-tenant basePath routing.** The Worker uses the sink's default
   `whatsapp://`. Multi-tenant deploys would wire per-tenant
   `WhatsAppSink` instances under different basePaths from a single
